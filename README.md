@@ -1,4 +1,3 @@
-# classic-node-protocol
 
 <div align="center">
 
