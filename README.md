@@ -8,7 +8,7 @@
 Zero-dependency · Full client & server · CPE support · TypeScript types
 
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
-[![Version](https://img.shields.io/badge/version-2.2.4-blue)](#)
+[![Version](https://img.shields.io/badge/version-2.2.5-blue)](#)
 [![License](https://img.shields.io/badge/license-see%20LICENSE-lightgrey)](#)
 
 </div>
