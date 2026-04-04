@@ -29,6 +29,10 @@ npm install classic-node-protocol
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+  - [Minimal server](#quick-start)
+  - [Minimal bot](#quick-start)
+  - [Full multiplayer relay server](#quick-start)
+  - [Online-mode server with auth + heartbeat](#quick-start)
 - [Architecture](#architecture)
 - [createServer & ClassiCubeServer](#createserver--classiccubeserver)
 - [ClientConnection](#clientconnection)
@@ -160,6 +164,131 @@ srv.on('disconnect', (client) => {
   srv.broadcast(encoder.encodeDespawnPlayer(client.id));
 });
 ```
+
+</details>
+
+<details>
+<summary><strong>Online-mode server with auth + heartbeat (classicube.net)</strong></summary>
+
+This is how you run a **real public server** — verifying players with MPPass and registering on the classicube.net server list so anyone can find it.
+
+```js
+const {
+  createServer,
+  ClassiCubeAuth,
+  level,
+  encoder,
+  BLOCKS,
+} = require('classic-node-protocol');
+
+// ── 1. Build your world ──────────────────────────────────────────────────────
+const W = 128, H = 64, D = 128;
+const world = level.buildFlatMap(W, H, D);
+
+// ── 2. Auth — generates a random salt and manages heartbeats ─────────────────
+const auth = new ClassiCubeAuth({
+  name:       'My Classic Server',  // shown in classicube.net server list
+  port:       25565,
+  maxPlayers: 32,
+  public:     true,
+  software:   'classic-node-protocol',
+});
+
+// ── 3. Server ────────────────────────────────────────────────────────────────
+const srv = createServer({ port: 25565, pingInterval: 3000 });
+
+srv.on('connection', async (client) => {
+  // ── Wait for the client's identification packet ───────────────────────────
+  const ident = await new Promise((resolve) => {
+    client.once('packet', (p) => {
+      if (p.name === 'identification') resolve(p);
+    });
+  });
+
+  // ── Verify MPPass (online-mode auth) ──────────────────────────────────────
+  // Players connecting via classicube.net will have a valid MPPass.
+  // Players connecting directly (LAN / offline) will send '-'.
+  if (ident.verificationKey !== '-' && !auth.verify(ident.username, ident.verificationKey)) {
+    client.disconnect('Invalid login. Please connect via classicube.net');
+    return;
+  }
+
+  client.username = ident.username;
+  console.log(`+ ${client.username} joined (${client.remoteAddress})`);
+  srv.broadcastMessage(`&e${client.username} &fjoined the game`);
+
+  // ── Send server identification ─────────────────────────────────────────────
+  client.sendIdentification('My Classic Server', `&aWelcome, ${client.username}!`);
+
+  // ── Send world ────────────────────────────────────────────────────────────
+  await client.sendLevel(world, W, H, D);
+
+  // ── Spawn self, then announce to existing players ─────────────────────────
+  client.spawnAt(-1, client.username, W / 2, H / 2 + 1, D / 2);
+  for (const [id, other] of srv.clients) {
+    if (id === client.id) continue;
+    // Show existing players to the newcomer
+    client.spawnAt(other.id, other.username, W / 2, H / 2 + 1, D / 2);
+    // Show newcomer to existing players
+    other.spawnAt(client.id, client.username, W / 2, H / 2 + 1, D / 2);
+  }
+
+  // ── Handle packets ────────────────────────────────────────────────────────
+  client.on('packet', (p) => {
+    switch (p.name) {
+      case 'message':
+        console.log(`<${client.username}> ${p.message}`);
+        srv.broadcastMessage(`<${client.username}> ${p.message}`);
+        break;
+
+      case 'setBlock': {
+        const blockId = p.mode === 1 ? p.blockType : BLOCKS.AIR;
+        world[level.blockIndex(p.x, p.z, p.y, W, D)] = blockId;
+        srv.broadcast(encoder.encodeServerSetBlock(p.x, p.y, p.z, blockId));
+        break;
+      }
+
+      case 'position':
+        srv.broadcastExcept(
+          client.id,
+          encoder.encodePosition(client.id, p.x, p.y, p.z, p.yaw, p.pitch)
+        );
+        break;
+    }
+  });
+});
+
+srv.on('disconnect', (client) => {
+  if (!client.username) return;
+  console.log(`- ${client.username} left`);
+  srv.broadcastMessage(`&e${client.username} &fleft the game`);
+  srv.broadcast(encoder.encodeDespawnPlayer(client.id));
+});
+
+// ── 4. Start listening, then register on classicube.net ──────────────────────
+async function main() {
+  await srv.listen(25565);
+  console.log('Server listening on :25565');
+
+  // Heartbeat sends immediately, then every 45 s automatically.
+  // Returns the public play URL on first successful beat.
+  const { url, error } = await auth.startHeartbeat(() => srv.playerCount);
+
+  if (error) {
+    // Non-fatal — server still works on LAN.
+    // Common cause: port 25565 not forwarded on your router.
+    console.warn('Heartbeat warning:', error);
+    console.log('Running in LAN-only mode.');
+  } else {
+    console.log('Public URL:', url);
+    // → https://www.classicube.net/server/play/abc123hash/
+  }
+}
+
+main().catch(console.error);
+```
+
+> **Port forwarding note:** For `url` to work, port `25565` must be open on your router and firewall. The server runs fine locally either way.
 
 </details>
 
