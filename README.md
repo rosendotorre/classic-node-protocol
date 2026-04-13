@@ -300,25 +300,35 @@ main().catch(console.error);
 ```
 classic-node-protocol
 │
-├── createServer()  ──→  ClassiCubeServer
-│                          └── emits ClientConnection per player
+├── createServer()  →  ClassiCubeServer
+│                         └── emits ClientConnection per player
 │
-├── createClient()  ──→  ClassiCubeClient
-│                          └── auto-assembles level → emits 'level'
+├── createClient()  →  ClassiCubeClient
+│                         └── auto-assembles level, emits 'level' event
 │
-├── PacketDecoder   ──→  streaming parser (EventEmitter → 'packet')
+├── PacketDecoder   →  streaming parser (EventEmitter, emits 'packet')
 │
-├── encoder         ──→  pure functions → Buffer  (no I/O)
+├── encoder         →  pure functions → Buffer  (no I/O)
+│                         └── thin façade over codec.js
 │
-├── protocol        ──→  packet IDs, sizes, BLOCKS, CPE_EXTENSIONS …
+├── codec           →  generic encode/decode engine  ← NEW in v3
+│                         └── driven by protocol.json
 │
-├── level           ──→  map generators + gzip pipeline
+├── types           →  primitive type handlers (u8, i16, string, …)  ← NEW in v3
 │
-├── auth            ──→  ClassiCubeAuth (server) + ClassiCubeAccount (bot)
+├── protocol.json   →  single source of truth for ALL packet schemas  ← NEW in v3
+│                         (Classic v7 + full CPE)
 │
-├── cpe             ──→  24+ CPE extension encoders / decoders
+├── protocol        →  JS constants: packet IDs, sizes, BLOCKS, CPE_EXTENSIONS…
 │
-└── jugadorUUID     ──→  deterministic UUID from username
+├── level           →  map builders + gzip compression pipeline
+│
+├── auth            →  ClassiCubeAuth (server) + ClassiCubeAccount (bot login)
+│
+├── cpe             →  all 24+ CPE extension encoders/decoders
+│                         └── thin façade over codec.js
+│
+└── jugadorUUID     →  deterministic UUID generation from usernameusername
 ```
 
 Everything is **CommonJS** (`require()`), zero runtime dependencies, Node ≥ 18.
